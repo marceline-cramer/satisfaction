@@ -1,0 +1,14 @@
+[package]
+name = "satisfaction"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+im = "15.1.0"
+
+[dependencies.cadical]
+version = "0.1.15"
+optional = true
+
+[features]
+cadical = ["dep:cadical"]
