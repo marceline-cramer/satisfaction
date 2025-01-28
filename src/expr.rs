@@ -156,8 +156,17 @@ impl<T: Clone + Debug + Ord + Hash> BoolExpr<T> {
             Iff(lhs, rhs) => lhs.and(rhs).or(&lhs.not().and(&rhs.not())).into_cnf(),
             // negate each clause of the subterm then convert back from DNF to CNF
             Not(term) => dnf_to_cnf(&term.into_cnf().iter().map(negate_clause).collect()),
-            // produce clauses from the Cartesian product over each terms' CNF form
-            Or(terms) => cnf_conjunction(terms.iter().map(Self::into_cnf)),
+            // Or(x, y, ...) <=> Not(And(Not(x), Not(y), ...))
+            Or(terms) => {
+                // since we're finding Not() twice, we don't negate the literals in clauses
+                let terms = terms
+                    .iter()
+                    .map(|term| term.into_cnf())
+                    .flat_map(|term| dnf_to_cnf(&term))
+                    .collect();
+
+                dnf_to_cnf(&terms)
+            }
         };
 
         eprintln!("found CNF of {self:?} in {:?}", start.elapsed());
