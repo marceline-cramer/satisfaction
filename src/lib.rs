@@ -87,10 +87,12 @@ pub mod cadical {
 
     impl<C: Callbacks> Backend for CadicalBackend<C> {
         fn add_clause(&mut self, vars: &[i32]) {
+            eprintln!("adding clause: {vars:?}");
             self.solver.add_clause(vars.iter().copied());
         }
 
         fn check(&mut self, assumptions: &[i32]) -> SatResult {
+            eprintln!("checking with assumptions: {assumptions:?}");
             use SatResult::*;
             match self.solver.solve_with(assumptions.iter().copied()) {
                 Some(true) => Sat,
