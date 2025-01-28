@@ -93,18 +93,12 @@ pub mod cadical {
         }
 
         fn check(&mut self, assumptions: &[i32]) -> SatResult {
-            let start = std::time::Instant::now();
             use SatResult::*;
             let result = match self.solver.solve_with(assumptions.iter().copied()) {
                 Some(true) => Sat,
                 Some(false) => Unsat,
                 None => Unknown,
             };
-
-            eprintln!(
-                "checking with assumptions {assumptions:?} (took {:?})",
-                start.elapsed()
-            );
 
             result
         }
