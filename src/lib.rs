@@ -105,6 +105,15 @@ pub struct Scope<T, B> {
 }
 
 impl<T: Clone + Ord + Hash, B: Backend> Scope<T, B> {
+    pub fn new(solver: Solver<T, B>) -> Self {
+        Self {
+            solver: Arc::new(Mutex::new(solver)),
+            staging: HashSet::new(),
+            parent_vars: HashSet::new(),
+            parent: None,
+        }
+    }
+
     pub fn push(&mut self) -> Self {
         // only create a new shared parent if we have new unstaged clauses
         if !self.staging.is_empty() {
