@@ -136,7 +136,7 @@ impl<T: Clone + Ord + Hash, B: Backend> Scope<T, B> {
 
     pub fn push(&mut self) -> Self {
         // only create a new shared parent if we have new unstaged clauses
-        if !self.staging.is_empty() {
+        if !self.staging.is_empty() || self.parent.is_none() {
             // migrate our variables into a new parent
             self.parent = Some(Arc::new(Self {
                 solver: self.solver.clone(),
