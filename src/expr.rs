@@ -1,4 +1,9 @@
-use std::{fmt::Debug, hash::Hash, str::FromStr, sync::Arc};
+use std::{
+    fmt::{Debug, Display},
+    hash::Hash,
+    str::FromStr,
+    sync::Arc,
+};
 
 use im::HashSet;
 
@@ -45,6 +50,34 @@ pub enum BoolExpr<T: Clone + Ord + Hash> {
     Or(HashSet<Self>),
     Xor(Box<Self>, Box<Self>),
     Iff(Box<Self>, Box<Self>),
+}
+
+impl<T: Clone + Display + Ord + Hash> Display for BoolExpr<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use BoolExpr::*;
+        match self {
+            Variable(var) => var.fmt(f),
+            Not(term) => write!(f, "(not {term})"),
+            Xor(lhs, rhs) => write!(f, "(xor {lhs} {rhs})"),
+            Iff(lhs, rhs) => write!(f, "(iff {lhs} {rhs})"),
+            And(terms) => {
+                write!(f, "(and")?;
+                for term in terms {
+                    write!(f, " {term}")?;
+                }
+
+                write!(f, ")")
+            }
+            Or(terms) => {
+                write!(f, "(or")?;
+                for term in terms {
+                    write!(f, " {term}")?;
+                }
+
+                write!(f, ")")
+            }
+        }
+    }
 }
 
 impl<T: Clone + Ord + Hash> From<T> for BoolExpr<T> {
