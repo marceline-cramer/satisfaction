@@ -115,21 +115,11 @@ pub mod cadical {
     }
 }
 
-pub struct Scope<T: Clone + Ord + Hash, B: Backend> {
+pub struct Scope<T, B> {
     solver: Arc<Mutex<Solver<T, B>>>,
     staging: HashSet<i32>,
     parent_vars: HashSet<i32>,
     parent: Option<Arc<Self>>,
-}
-
-impl<T: Clone + Ord + Hash, B: Backend> Drop for Scope<T, B> {
-    fn drop(&mut self) {
-        let mut solver = self.solver.lock().unwrap();
-        for var in self.staging.iter() {
-            // commit the gate variable to being positive, discarding the corresponding temp clauses
-            solver.commit(*var);
-        }
-    }
 }
 
 impl<T: Clone + Debug + Ord + Hash, B: Backend> Scope<T, B> {
@@ -170,42 +160,31 @@ impl<T: Clone + Debug + Ord + Hash, B: Backend> Scope<T, B> {
         // lock the solver
         let mut solver = self.solver.lock().unwrap();
 
+        // do the Tseitin transformation to get the relevant clauses
+        let (gate, clauses) = solver.tseitin_cnf(&expr);
+
         // if we have no parent, we immediately commit this clause without gating it
-        let gate = if self.parent.is_none() {
-            None
+        if self.parent.is_none() {
+            solver.backend.add_clause(&[gate]);
         } else {
-            let gate = solver.temp_var();
+            // otherwise, we're staging this gate for assumptions
             self.staging.insert(gate);
-            Some(gate)
-        };
+        }
 
         // add each of the clauses in CNF form
-        for clause in expr.into_cnf() {
-            let mut clause = solver.map_clause(clause);
-            clause.extend(gate); // include the gate if there is one
+        for clause in clauses {
             solver.backend.add_clause(&clause);
         }
 
-        // return self reference to chain
+        // return self reference to chain multiple assertions
         drop(solver);
         self
     }
 
     pub fn check(&self) -> SatResult {
         let mut solver = self.solver.lock().unwrap();
-
-        let mut our_assumptions = self.parent_vars.clone();
-        our_assumptions.extend(self.staging.iter().copied());
-
-        let mut assumptions = Vec::new();
-        for var in solver.uncommitted.iter().copied() {
-            if our_assumptions.contains(&var) {
-                assumptions.push(-var);
-            } else {
-                assumptions.push(var);
-            }
-        }
-
+        let mut assumptions = Vec::from_iter(self.parent_vars.iter().copied());
+        assumptions.extend(self.staging.iter().copied());
         solver.check(&assumptions)
     }
 }
@@ -292,6 +271,81 @@ impl<T: Clone + Ord + Hash, B: Backend> Solver<T, B> {
     pub fn add_clause(&mut self, clause: Clause<T>) {
         let vars = self.map_clause(clause);
         self.backend.add_clause(&vars);
+    }
+
+    /// Performs the Tseitin transformation on a Boolean expression.
+    ///
+    /// Returns transformed clauses and the output variable for the whole expression.
+    pub fn tseitin_cnf(&mut self, expr: &BoolExpr<T>) -> (i32, Vec<Vec<i32>>) {
+        use BoolExpr::*;
+        match expr {
+            Variable(var) => (self.load_variable(var.clone()), vec![]),
+            Not(term) => {
+                let (input, mut clauses) = self.tseitin_cnf(term);
+                let output = self.unique_variable();
+                clauses.push(vec![input, output]);
+                clauses.push(vec![-input, -output]);
+                (output, clauses)
+            }
+            And(terms) => {
+                let output = self.unique_variable();
+                let mut all_case = vec![output];
+                let mut clauses = Vec::new();
+
+                for term in terms.iter() {
+                    let (input, new_clauses) = self.tseitin_cnf(term);
+                    clauses.extend(new_clauses);
+                    all_case.push(-input);
+                    clauses.push(vec![input, -output])
+                }
+
+                clauses.push(all_case);
+
+                (output, clauses)
+            }
+            Or(terms) => {
+                let output = self.unique_variable();
+                let mut none_case = vec![-output];
+                let mut clauses = Vec::new();
+
+                for term in terms.iter() {
+                    let (input, new_clauses) = self.tseitin_cnf(term);
+                    clauses.extend(new_clauses);
+                    none_case.push(input);
+                    clauses.push(vec![-input, output])
+                }
+
+                clauses.push(none_case);
+
+                (output, clauses)
+            }
+            Xor(lhs, rhs) => {
+                let mut clauses = Vec::new();
+                let (lhs, new_clauses) = self.tseitin_cnf(lhs);
+                clauses.extend(new_clauses);
+                let (rhs, new_clauses) = self.tseitin_cnf(rhs);
+                clauses.extend(new_clauses);
+                let output = self.unique_variable();
+                clauses.push(vec![-lhs, -rhs, -output]);
+                clauses.push(vec![lhs, rhs, -output]);
+                clauses.push(vec![-lhs, rhs, output]);
+                clauses.push(vec![lhs, -rhs, output]);
+                (output, clauses)
+            }
+            Iff(lhs, rhs) => {
+                let mut clauses = Vec::new();
+                let (lhs, new_clauses) = self.tseitin_cnf(lhs);
+                clauses.extend(new_clauses);
+                let (rhs, new_clauses) = self.tseitin_cnf(rhs);
+                clauses.extend(new_clauses);
+                let output = self.unique_variable();
+                clauses.push(vec![-lhs, -rhs, output]);
+                clauses.push(vec![lhs, rhs, output]);
+                clauses.push(vec![-lhs, rhs, -output]);
+                clauses.push(vec![lhs, -rhs, -output]);
+                (output, clauses)
+            }
+        }
     }
 
     /// Helper to map a clause to a list of variable indices.
