@@ -2,10 +2,10 @@ use std::{fmt::Debug, hash::Hash, str::FromStr, sync::Arc};
 
 use im::{HashSet, OrdSet};
 
-pub type Clause<T> = OrdSet<Literal<T>>;
+pub type Clause<T> = Arc<[Literal<T>]>;
 
 /// Tests if a clause is tautological.
-pub fn clause_is_tautological<T: Clone + Ord>(clause: &Clause<T>) -> bool {
+pub fn clause_is_tautological<T: Clone + Ord>(clause: &[Literal<T>]) -> bool {
     for lit in clause.iter() {
         if lit.polarity && clause.contains(&lit.clone().negate()) {
             return true;
@@ -31,14 +31,14 @@ pub fn dnf_to_cnf<T: Clone + Ord>(clauses: &OrdSet<Clause<T>>) -> OrdSet<Clause<
     }
 
     // start with a single, empty clause to find the product with
-    let mut product = OrdSet::unit(Clause::new());
+    let mut product = vec![Vec::new()];
 
     // find a new product using each clause in the set
     for clause in clauses.iter() {
         let mut new_product = Vec::with_capacity(product.len() * clause.len());
 
         for old_clause in product {
-            for lit in clause {
+            for lit in clause.iter() {
                 // avoid constructing tautological clauses
                 if old_clause.contains(&lit.clone().negate()) {
                     continue;
@@ -46,16 +46,16 @@ pub fn dnf_to_cnf<T: Clone + Ord>(clauses: &OrdSet<Clause<T>>) -> OrdSet<Clause<
 
                 // create a new clause
                 let mut new_clause = old_clause.clone();
-                new_clause.insert(lit.clone());
+                new_clause.push(lit.clone());
                 new_product.push(new_clause);
             }
         }
 
-        product = new_product.into();
+        product = new_product;
     }
 
     // return the total product
-    product
+    product.into_iter().map(Clause::from).collect()
 }
 
 /// Finds a CNF-form of the disjunction of a list of CNF clauses.
@@ -63,7 +63,7 @@ pub fn cnf_conjunction<T: Clone + Ord>(
     terms: impl IntoIterator<Item = OrdSet<Clause<T>>>,
 ) -> OrdSet<Clause<T>> {
     // start with a single, empty clause to find the product with
-    let mut product = OrdSet::unit(Clause::new());
+    let mut product = vec![Vec::new()];
 
     // find a new product from each term in the list
     for term in terms.into_iter() {
@@ -82,11 +82,11 @@ pub fn cnf_conjunction<T: Clone + Ord>(
             }
         }
 
-        product = new_product.into();
+        product = new_product;
     }
 
     // return the total product
-    product
+    product.into_iter().map(Clause::from).collect()
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -144,10 +144,10 @@ impl<T: Clone + Debug + Ord + Hash> BoolExpr<T> {
         use BoolExpr::*;
         let cnf = match self {
             // initialize a unit clause from a single variable
-            Variable(variable) => OrdSet::unit(Clause::unit(Literal {
+            Variable(variable) => OrdSet::unit(Arc::from_iter([Literal {
                 variable: variable.clone(),
                 polarity: true,
-            })),
+            }])),
             // AND of CNF terms is just merging them
             And(terms) => terms.iter().flat_map(Self::into_cnf).collect(),
             // XOR by explicitly expressing cases and finding CNF

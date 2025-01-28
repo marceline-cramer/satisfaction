@@ -33,23 +33,24 @@ pub fn read_dimacs(src: &str) -> OrdSet<Clause<i32>> {
         .expect("failed to parse clause count");
 
     let mut clauses = OrdSet::new();
-    let mut clause = OrdSet::new();
+    let mut clause = Vec::new();
 
     for word in words {
         if let Some(word) = word.strip_prefix('-') {
             let variable = word.parse().expect("failed to parse variable");
             let polarity = false;
             let lit = Literal { variable, polarity };
-            clause.insert(lit);
+            clause.push(lit);
         } else if word == "%" {
             break;
         } else if word == "0" {
-            clauses.insert(std::mem::take(&mut clause));
+            let clause = std::mem::take(&mut clause);
+            clauses.insert(clause.into());
         } else {
             let variable = word.parse().expect("failed to parse variable");
             let polarity = true;
             let lit = Literal { variable, polarity };
-            clause.insert(lit);
+            clause.push(lit);
         }
     }
 
