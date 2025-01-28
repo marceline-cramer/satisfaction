@@ -105,11 +105,21 @@ pub mod cadical {
     }
 }
 
-pub struct Scope<T, B> {
+pub struct Scope<T: Clone + Ord + Hash, B: Backend> {
     solver: Arc<Mutex<Solver<T, B>>>,
     staging: HashSet<i32>,
     parent_vars: HashSet<i32>,
     parent: Option<Arc<Self>>,
+}
+
+impl<T: Clone + Ord + Hash, B: Backend> Drop for Scope<T, B> {
+    fn drop(&mut self) {
+        let mut solver = self.solver.lock().unwrap();
+        for var in self.staging.iter() {
+            // commit the gate variable to being positive, discarding the corresponding temp clauses
+            solver.commit(*var);
+        }
+    }
 }
 
 impl<T: Clone + Ord + Hash, B: Backend> Scope<T, B> {
@@ -146,7 +156,7 @@ impl<T: Clone + Ord + Hash, B: Backend> Scope<T, B> {
         }
     }
 
-    pub fn assert(&mut self, expr: BoolExpr<T>) {
+    pub fn assert(&mut self, expr: BoolExpr<T>) -> &mut Self {
         // lock the solver
         let mut solver = self.solver.lock().unwrap();
 
@@ -165,6 +175,10 @@ impl<T: Clone + Ord + Hash, B: Backend> Scope<T, B> {
             clause.extend(gate); // include the gate if there is one
             solver.backend.add_clause(&clause);
         }
+
+        // return self reference to chain
+        drop(solver);
+        self
     }
 
     pub fn check(&self) -> SatResult {
