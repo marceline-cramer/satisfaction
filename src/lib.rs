@@ -4,12 +4,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use expr::{BoolExpr, Clause};
+use expr::{BoolExpr, Clause, Literal};
+use im::OrdSet;
 
 pub mod expr;
 
 /// Parses a DIMACS file from a string. Panics on syntax errors.
-pub fn read_dimacs(src: &str) -> Vec<Vec<i32>> {
+pub fn read_dimacs(src: &str) -> OrdSet<Clause<i32>> {
     let mut words = src
         .lines()
         .filter(|line| !line.starts_with('c'))
@@ -24,23 +25,30 @@ pub fn read_dimacs(src: &str) -> Vec<Vec<i32>> {
         .parse()
         .expect("failed to parse variable count");
 
-    let clause_num = words
+    let _clause_num: usize = words
         .next()
         .expect("expected clause count")
         .parse()
         .expect("failed to parse clause count");
 
-    let mut clauses = Vec::with_capacity(clause_num);
-    let mut clause = Vec::new();
+    let mut clauses = OrdSet::new();
+    let mut clause = OrdSet::new();
 
     for word in words {
-        if word == "%" {
+        if let Some(word) = word.strip_prefix('-') {
+            let variable = word.parse().expect("failed to parse variable");
+            let polarity = false;
+            let lit = Literal { variable, polarity };
+            clause.insert(lit);
+        } else if word == "%" {
             break;
         } else if word == "0" {
-            clauses.push(std::mem::take(&mut clause));
+            clauses.insert(std::mem::take(&mut clause));
         } else {
-            let var = word.parse().expect("failed to parse variable");
-            clause.push(var);
+            let variable = word.parse().expect("failed to parse variable");
+            let polarity = true;
+            let lit = Literal { variable, polarity };
+            clause.insert(lit);
         }
     }
 
