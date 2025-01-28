@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Debug,
     hash::Hash,
     sync::{Arc, Mutex},
 };
@@ -87,18 +88,24 @@ pub mod cadical {
 
     impl<C: Callbacks> Backend for CadicalBackend<C> {
         fn add_clause(&mut self, vars: &[i32]) {
-            eprintln!("adding clause: {vars:?}");
             self.solver.add_clause(vars.iter().copied());
         }
 
         fn check(&mut self, assumptions: &[i32]) -> SatResult {
-            eprintln!("checking with assumptions: {assumptions:?}");
+            let start = std::time::Instant::now();
             use SatResult::*;
-            match self.solver.solve_with(assumptions.iter().copied()) {
+            let result = match self.solver.solve_with(assumptions.iter().copied()) {
                 Some(true) => Sat,
                 Some(false) => Unsat,
                 None => Unknown,
-            }
+            };
+
+            eprintln!(
+                "checking with assumptions {assumptions:?} (took {:?})",
+                start.elapsed()
+            );
+
+            result
         }
 
         fn value(&self, lit: i32) -> bool {
@@ -124,7 +131,7 @@ impl<T: Clone + Ord + Hash, B: Backend> Drop for Scope<T, B> {
     }
 }
 
-impl<T: Clone + Ord + Hash, B: Backend> Scope<T, B> {
+impl<T: Clone + Debug + Ord + Hash, B: Backend> Scope<T, B> {
     pub fn new(solver: Solver<T, B>) -> Self {
         Self {
             solver: Arc::new(Mutex::new(solver)),

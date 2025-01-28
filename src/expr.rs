@@ -1,4 +1,4 @@
-use std::{hash::Hash, str::FromStr, sync::Arc};
+use std::{fmt::Debug, hash::Hash, str::FromStr, sync::Arc};
 
 use im::{HashSet, OrdSet};
 
@@ -138,10 +138,11 @@ impl<T: Clone + Ord + Hash> From<T> for BoolExpr<T> {
     }
 }
 
-impl<T: Clone + Ord + Hash> BoolExpr<T> {
+impl<T: Clone + Debug + Ord + Hash> BoolExpr<T> {
     pub fn into_cnf(&self) -> OrdSet<Clause<T>> {
+        let start = std::time::Instant::now();
         use BoolExpr::*;
-        match self {
+        let cnf = match self {
             // initialize a unit clause from a single variable
             Variable(variable) => OrdSet::unit(Clause::unit(Literal {
                 variable: variable.clone(),
@@ -152,12 +153,16 @@ impl<T: Clone + Ord + Hash> BoolExpr<T> {
             // XOR by explicitly expressing cases and finding CNF
             Xor(lhs, rhs) => lhs.and(&rhs.not()).or(&lhs.not().and(rhs)).into_cnf(),
             // if-and-only-if by explicitly expressing and finding CNF
-            Iff(lhs, rhs) => lhs.and(rhs).or(&lhs.or(rhs).not()).into_cnf(),
+            Iff(lhs, rhs) => lhs.and(rhs).or(&lhs.not().and(&rhs.not())).into_cnf(),
             // negate each clause of the subterm then convert back from DNF to CNF
             Not(term) => dnf_to_cnf(&term.into_cnf().iter().map(negate_clause).collect()),
             // produce clauses from the Cartesian product over each terms' CNF form
             Or(terms) => cnf_conjunction(terms.iter().map(Self::into_cnf)),
-        }
+        };
+
+        eprintln!("found CNF of {self:?} in {:?}", start.elapsed());
+
+        cnf
     }
 
     pub fn not(&self) -> Self {
