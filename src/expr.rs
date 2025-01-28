@@ -15,6 +15,15 @@ pub struct Literal<T> {
     pub polarity: bool,
 }
 
+impl<T> Literal<T> {
+    pub fn map<O>(self, cb: impl FnOnce(T) -> O) -> Literal<O> {
+        Literal {
+            variable: cb(self.variable),
+            polarity: self.polarity,
+        }
+    }
+}
+
 impl FromStr for Literal<String> {
     type Err = ();
 
